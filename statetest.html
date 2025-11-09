@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>US States Quiz — State↔Capital (+ optional Abbrev & Map)</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+  <style>
+    :root{ --bg:#0b1020; --panel:#121933; --ink:#eaf0ff; --muted:#a9b3d1; --accent:#5ac8fa; --ok:#2ecc71; --bad:#ff6b6b; --border:#1d2549; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#0b1020,#0b1226 45%,#0c1430);color:var(--ink)}
+    header{padding:18px 22px;border-bottom:1px solid var(--border);background:rgba(10,15,35,.7);backdrop-filter:saturate(140%) blur(6px);-webkit-backdrop-filter:saturate(140%) blur(6px);position:sticky;top:0;z-index:10}
+    h1{margin:0;font-size:20px;letter-spacing:.3px}
+    .wrap{max-width:1200px;margin:24px auto;padding:0 22px}
+    .cards{display:grid;grid-template-columns:1.2fr .8fr;gap:24px}
+    @media (max-width: 1000px){.cards{grid-template-columns:1fr}}
+    @media (max-width: 640px){
+      .panel{padding-bottom:80px}
+      .panel .footer{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(18,27,59,.95),rgba(18,27,59,1));padding-top:12px;margin-top:12px;border-top:1px solid var(--border)}
+      .state-list{max-height:56vh;grid-template-columns:repeat(2,1fr)}
+    }
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.25);overflow:hidden}
+    .card h2{font-size:16px;margin:0;padding:14px 16px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#121b3b,#0f1633)}
+    .card .body{padding:16px}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .btn{appearance:none;border:none;background:var(--accent);color:#00111a;font-weight:700;padding:10px 14px;border-radius:12px;cursor:pointer;transition:transform .05s ease,filter .2s ease}
+    .btn:active{transform:translateY(1px)}
+    .btn.secondary{background:#2b355f;color:#cdd7ff}
+    .btn.ghost{background:transparent;border:1px solid #2a3563;color:#cdd7ff}
+    .btn.warn{background:#f4d03f;color:#1b1600}
+    input[type="text"]{width:100%;background:#0c1330;border:1px solid #2a3563;color:var(--ink);padding:10px 12px;border-radius:10px;font-size:15px}
+    .error{outline:2px solid var(--bad); box-shadow:0 0 0 3px rgba(255,107,107,.25);}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #2a3563;border-radius:999px;background:#0f1733;color:var(--muted);font-size:13px}
+    .feedback{margin-top:10px;padding:10px 12px;border-radius:10px;background:#0e1634;border:1px solid #243060;color:#cfe0ff}
+    .feedback.ok{border-color:#286b48;color:#d5ffe8}
+    .feedback.bad{border-color:#7a2a3a;color:#ffd6dc}
+    .score{font-weight:700}
+    .muted{color:var(--muted)}
+    .small{font-size:12px}
+    .map-wrap{position:relative}
+    svg{width:100%;height:auto;display:block}
+    .state{fill:#17204a;stroke:#2a3563;stroke-width:0.8;cursor:pointer;transition:fill .15s ease}
+    .state:hover{fill:#21306d}
+    .state.active{fill:#2946a6}
+    .state.correct{fill:#2c8a52}
+    .state.wrong{fill:#8a2c3a}
+    .overlay{position:fixed;inset:0;background:rgba(7,10,25,.75);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto;-webkit-overflow-scrolling:touch}
+    .panel{width:min(900px,95vw);background:var(--panel);border:1px solid var(--border);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.35);padding:18px;max-height:92vh;overflow:auto}
+    .panel h3{margin:0 0 12px;font-size:18px}
+    .panel .section{border-top:1px solid var(--border);padding-top:12px;margin-top:12px}
+    .state-list{max-height:50vh;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #2a3563;border-radius:12px;padding:10px;background:#0c1330;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    .state-list label{display:flex;gap:8px;align-items:center;font-size:14px;padding:6px 8px;border-radius:8px}
+    .state-list input{transform:scale(1.2);margin-right:2px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>US States Quiz — State↔Capital (+ optional Abbrev & Map)</h1>
+  </header>
+
+  <div class="wrap">
+    <div class="cards">
+      <section class="card">
+        <h2>Map — click the correct state</h2>
+        <div class="body map-wrap">
+          <svg id="usmap" viewBox="0 0 960 600" role="img" aria-label="Map of the United States"></svg>
+          <div class="small muted" style="margin-top:6px">Accurate 50‑state map via TopoJSON. Map click can be required or optional. <span class="pill" style="margin-left:6px"><span id="clickedTag">No click</span></span></span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Quiz</h2>
+        <div class="body">
+          <div class="row" style="justify-content:space-between; margin-bottom:10px">
+            <div class="pill">Mode: <span id="modeTag">—</span></div>
+            <div class="pill">Score: <span class="score" id="score">0</span> / <span id="total">0</span></div>
+          </div>
+
+          <div class="grid">
+            <div>
+              <label class="small muted">Prompt</label>
+              <div id="prompt" class="feedback" style="background:#0b1433">—</div>
+            </div>
+            <div>
+              <label class="small muted">Your answer(s)</label>
+              <input id="answerMain" type="text" placeholder="Type the other factor (State or Capital)" />
+              <div style="height:8px"></div>
+              <input id="answerAbbr" type="text" placeholder="Abbreviation (if required)" style="display:none" />
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:14px">
+            <button class="btn" id="askBtn">Ask Question</button>
+            <button class="btn" id="nextBtn">Next Question</button>
+            <button class="btn secondary" id="checkBtn">Check Answer</button>
+            <button class="btn warn" id="completeBtn">Complete</button>
+            <button class="btn ghost" id="clearBtn">Clear Score</button>
+            <button class="btn ghost" id="backBtn">Change Settings</button>
+          </div>
+
+          <div id="msg" class="feedback" style="margin-top:14px">Open settings to choose prompt type(s), whether to require abbreviation and/or map click, and which states to include.</div>
+          <div class="small muted" style="margin-top:6px">To score: give the correct text answer(s) and, if enabled, click the correct state on the map.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- START / SETTINGS OVERLAY -->
+  <div class="overlay" id="startOverlay" aria-modal="true" role="dialog">
+    <div class="panel">
+      <h3>Quiz settings</h3>
+      <div class="section">
+        <strong>What should the prompt be?</strong>
+        <div class="controls">
+          <label><input type="checkbox" class="promptMode" value="state" checked> Prompt with <b>State</b> (answer is Capital)</label>
+          <label><input type="checkbox" class="promptMode" value="capital" checked> Prompt with <b>Capital</b> (answer is State)</label>
+        </div>
+      </div>
+      <div class="section">
+        <strong>Add-on requirements</strong>
+        <div class="controls">
+          <label><input type="checkbox" id="optAbbr"> Also require <b>abbreviation</b></label>
+          <label><input type="checkbox" id="optMap"> Also require <b>map click</b></label>
+        </div>
+      </div>
+      <div class="section">
+        <strong>Which states?</strong>
+        <div class="controls">
+          <input type="text" id="filterBox" placeholder="Filter by name or abbreviation..." style="flex:1;min-width:260px">
+          <button class="btn ghost" id="allBtn">Select All</button>
+          <button class="btn ghost" id="noneBtn">None</button>
+          <button class="btn ghost" id="contigBtn">48 Contiguous</button>
+        </div>
+        <div class="state-list" id="stateList"></div>
+      </div>
+      <div class="row footer" style="justify-content:flex-end; margin-top:14px">
+        <button class="btn warn" id="startBtn">Start Quiz</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- END / RESULTS OVERLAY -->
+  <div class="overlay" id="endOverlay" aria-modal="true" role="dialog" style="display:none">
+    <div class="panel">
+      <h3>Quiz complete</h3>
+      <div id="finalStats" class="feedback" style="margin-top:10px">—</div>
+      <div class="row" style="justify-content:flex-end; margin-top:14px">
+        <button class="btn" id="playAgainBtn">Play Again</button>
+        <button class="btn ghost" id="endSettingsBtn">Change Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Data =====
+    const STATES = [
+      {state:'Alabama',abbr:'AL',capital:'Montgomery'},{state:'Alaska',abbr:'AK',capital:'Juneau'},
+      {state:'Arizona',abbr:'AZ',capital:'Phoenix'},{state:'Arkansas',abbr:'AR',capital:'Little Rock'},
+      {state:'California',abbr:'CA',capital:'Sacramento'},{state:'Colorado',abbr:'CO',capital:'Denver'},
+      {state:'Connecticut',abbr:'CT',capital:'Hartford'},{state:'Delaware',abbr:'DE',capital:'Dover'},
+      {state:'Florida',abbr:'FL',capital:'Tallahassee'},{state:'Georgia',abbr:'GA',capital:'Atlanta'},
+      {state:'Hawaii',abbr:'HI',capital:'Honolulu'},{state:'Idaho',abbr:'ID',capital:'Boise'},
+      {state:'Illinois',abbr:'IL',capital:'Springfield'},{state:'Indiana',abbr:'IN',capital:'Indianapolis'},
+      {state:'Iowa',abbr:'IA',capital:'Des Moines'},{state:'Kansas',abbr:'KS',capital:'Topeka'},
+      {state:'Kentucky',abbr:'KY',capital:'Frankfort'},{state:'Louisiana',abbr:'LA',capital:'Baton Rouge'},
+      {state:'Maine',abbr:'ME',capital:'Augusta'},{state:'Maryland',abbr:'MD',capital:'Annapolis'},
+      {state:'Massachusetts',abbr:'MA',capital:'Boston'},{state:'Michigan',abbr:'MI',capital:'Lansing'},
+      {state:'Minnesota',abbr:'MN',capital:'Saint Paul'},{state:'Mississippi',abbr:'MS',capital:'Jackson'},
+      {state:'Missouri',abbr:'MO',capital:'Jefferson City'},{state:'Montana',abbr:'MT',capital:'Helena'},
+      {state:'Nebraska',abbr:'NE',capital:'Lincoln'},{state:'Nevada',abbr:'NV',capital:'Carson City'},
+      {state:'New Hampshire',abbr:'NH',capital:'Concord'},{state:'New Jersey',abbr:'NJ',capital:'Trenton'},
+      {state:'New Mexico',abbr:'NM',capital:'Santa Fe'},{state:'New York',abbr:'NY',capital:'Albany'},
+      {state:'North Carolina',abbr:'NC',capital:'Raleigh'},{state:'North Dakota',abbr:'ND',capital:'Bismarck'},
+      {state:'Ohio',abbr:'OH',capital:'Columbus'},{state:'Oklahoma',abbr:'OK',capital:'Oklahoma City'},
+      {state:'Oregon',abbr:'OR',capital:'Salem'},{state:'Pennsylvania',abbr:'PA',capital:'Harrisburg'},
+      {state:'Rhode Island',abbr:'RI',capital:'Providence'},{state:'South Carolina',abbr:'SC',capital:'Columbia'},
+      {state:'South Dakota',abbr:'SD',capital:'Pierre'},{state:'Tennessee',abbr:'TN',capital:'Nashville'},
+      {state:'Texas',abbr:'TX',capital:'Austin'},{state:'Utah',abbr:'UT',capital:'Salt Lake City'},
+      {state:'Vermont',abbr:'VT',capital:'Montpelier'},{state:'Virginia',abbr:'VA',capital:'Richmond'},
+      {state:'Washington',abbr:'WA',capital:'Olympia'},{state:'West Virginia',abbr:'WV',capital:'Charleston'},
+      {state:'Wisconsin',abbr:'WI',capital:'Madison'},{state:'Wyoming',abbr:'WY',capital:'Cheyenne'}
+    ];
+    const byAbbr = Object.fromEntries(STATES.map(s=>[s.abbr,s]));
+
+    // FIPS -> Postal abbreviation map (us-atlas uses numeric state IDs)
+    const FIPS_TO_ABBR = {
+      '01':'AL','02':'AK','04':'AZ','05':'AR','06':'CA','08':'CO','09':'CT','10':'DE','11':'DC','12':'FL','13':'GA','15':'HI','16':'ID','17':'IL','18':'IN','19':'IA','20':'KS','21':'KY','22':'LA','23':'ME','24':'MD','25':'MA','26':'MI','27':'MN','28':'MS','29':'MO','30':'MT','31':'NE','32':'NV','33':'NH','34':'NJ','35':'NM','36':'NY','37':'NC','38':'ND','39':'OH','40':'OK','41':'OR','42':'PA','44':'RI','45':'SC','46':'SD','47':'TN','48':'TX','49':'UT','50':'VT','51':'VA','53':'WA','54':'WV','55':'WI','56':'WY'
+    };
+
+    // ===== Settings UI refs =====
+    const startOverlay = document.getElementById('startOverlay');
+    const stateList = document.getElementById('stateList');
+    const filterBox = document.getElementById('filterBox');
+    const allBtn = document.getElementById('allBtn');
+    const noneBtn = document.getElementById('noneBtn');
+    const contigBtn = document.getElementById('contigBtn');
+    const startBtn = document.getElementById('startBtn');
+
+    const promptBoxes = Array.from(document.querySelectorAll('.promptMode'));
+    const optAbbr = document.getElementById('optAbbr');
+    const optMap = document.getElementById('optMap');
+
+    let selectedStates = new Set(STATES.map(s=>s.abbr));
+
+    function renderStateList(){
+      const q = filterBox.value.trim().toLowerCase();
+      stateList.innerHTML = '';
+      STATES.forEach(s=>{
+        const hay = (s.state + ' ' + s.abbr).toLowerCase();
+        if(q && !hay.includes(q)) return;
+        const id = 'pick-' + s.abbr;
+        const wrap = document.createElement('label');
+        wrap.innerHTML = '<input type="checkbox" id="'+id+'" ' + (selectedStates.has(s.abbr)?'checked':'') + '> ' + s.state + ' <span class="muted">(' + s.abbr + ') — ' + s.capital + '</span>';
+        wrap.querySelector('input').addEventListener('change', (e)=>{
+          if(e.target.checked) selectedStates.add(s.abbr); else selectedStates.delete(s.abbr);
+        });
+        stateList.appendChild(wrap);
+      });
+    }
+
+    filterBox.addEventListener('input', renderStateList);
+    allBtn.addEventListener('click', ()=>{ selectedStates = new Set(STATES.map(s=>s.abbr)); renderStateList(); });
+    noneBtn.addEventListener('click', ()=>{ selectedStates = new Set(); renderStateList(); });
+    contigBtn.addEventListener('click', ()=>{ selectedStates = new Set(STATES.filter(s=>!['AK','HI'].includes(s.abbr)).map(s=>s.abbr)); renderStateList(); });
+
+    // ===== Map (D3 + us-atlas) =====
+    const svg = d3.select('#usmap');
+    const gStates = svg.append('g');
+    const projection = d3.geoAlbersUsa().translate([480, 300]).scale(1000);
+    const path = d3.geoPath(projection);
+    const stateElByAbbr = new Map();
+    let clickedAbbr = null; // stores uppercase postal like "CA"
+    let roundId = 0;        // increments each question
+    let clickedRoundId = null; // round in which the last click occurred
+    let gradedRoundId = null;  // round that has already been scored // round in which the last click occurred
+
+    function drawMap(geojson){
+      gStates.selectAll('path')
+        .data(geojson.features)
+        .join('path')
+        .attr('class','state')
+        .attr('d', path)
+        .attr('data-abbr', d=> FIPS_TO_ABBR[String(d.id).padStart(2,'0')] || '')
+        .on('click', function(event, d){
+          const ab = (FIPS_TO_ABBR[String(d.id).padStart(2,'0')] || '').toUpperCase();
+          clickedAbbr = ab; clickedRoundId = roundId; // bind click to the current round
+          gStates.selectAll('.state').classed('active', false).classed('correct', false).classed('wrong', false);
+          d3.select(this).classed('active', true);
+          const tag = document.getElementById('clickedTag'); if(tag) tag.textContent = 'Clicked';
+        })
+        .each(function(d){
+          const ab = (FIPS_TO_ABBR[String(d.id).padStart(2,'0')] || '').toUpperCase();
+          if(ab){ stateElByAbbr.set(ab, this); }
+        });
+    }
+
+    (async function(){
+      const topo = await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json').then(r=>r.json());
+      const statesGeo = topojson.feature(topo, topo.objects.states);
+      drawMap(statesGeo);
+    })();
+
+    // ===== Quiz logic =====
+    const askBtn = document.getElementById('askBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const completeBtn = document.getElementById('completeBtn');
+    const checkBtn = document.getElementById('checkBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const backBtn = document.getElementById('backBtn');
+    const endOverlay = document.getElementById('endOverlay');
+    const finalStats = document.getElementById('finalStats');
+    const playAgainBtn = document.getElementById('playAgainBtn');
+    const endSettingsBtn = document.getElementById('endSettingsBtn');
+    const modeTag = document.getElementById('modeTag');
+    const promptEl = document.getElementById('prompt');
+    const ansMain = document.getElementById('answerMain');
+    const ansAbbr = document.getElementById('answerAbbr');
+    const msgEl = document.getElementById('msg');
+    const scoreEl = document.getElementById('score');
+    const totalEl = document.getElementById('total');
+
+    let enabledPrompts = new Set(['state','capital']);
+    let requireAbbr = false;
+    let requireMap = false;
+    let pool = STATES.map(s=>s.abbr);
+
+    function startQuiz(){
+      enabledPrompts = new Set(promptBoxes.filter(b=>b.checked).map(b=>b.value));
+      if(enabledPrompts.size===0){ alert('Pick at least one prompt type (State or Capital).'); return; }
+      requireAbbr = optAbbr.checked;
+      requireMap = optMap.checked;
+      pool = Array.from(selectedStates);
+      if(pool.length===0){ alert('Pick at least one state.'); return; }
+      ansAbbr.style.display = requireAbbr ? 'block' : 'none';
+      startOverlay.style.display='none';
+      resetRoundUI();
+      msgEl.textContent = 'Click Ask Question to begin!';
+    }
+
+    startBtn.addEventListener('click', startQuiz);
+    backBtn.addEventListener('click', ()=>{ startOverlay.style.display='flex'; });
+
+    function normalize(s){
+      s = (s||'').toLowerCase();
+      s = s.replaceAll('.', ' ').replaceAll(',', ' ').replaceAll('-', ' ').replaceAll('’',' ').replaceAll("'", ' ');
+      s = s.replaceAll('st. ', 'saint ').replaceAll('st ', 'saint ');
+      while(s.indexOf('  ') !== -1){ s = s.replace('  ', ' '); }
+      return s.trim();
+    }
+
+    // Validate required inputs before scoring — only count a map click if it happened this round
+    function validateInputs({requireAbbr, requireMap}, tMain, tAbbr){
+      if(!tMain){ return { ok:false, reason:'main', msg:'Please enter your answer.' }; }
+      if(requireAbbr && !tAbbr){ return { ok:false, reason:'abbr', msg:'Abbreviation is required.' }; }
+      if(requireMap && clickedRoundId !== roundId){ return { ok:false, reason:'map', msg:'Please click the state on the map.' }; }
+      return { ok:true };
+    }
+
+    let current = null; // {abbr, state, capital, mode}
+
+    function resetMapStyles(){
+      d3.selectAll('.state').classed('active', false).classed('correct', false).classed('wrong', false);
+      clickedAbbr = null; clickedRoundId = null;
+      const tag = document.getElementById('clickedTag'); if(tag) tag.textContent = 'No click';
+    }
+    function resetRoundUI(){
+      resetMapStyles();
+      ansMain.value = ''; ansAbbr.value='';
+      ansMain.classList.remove('error'); ansAbbr.classList.remove('error');
+      promptEl.textContent = '—'; modeTag.textContent='—';
+    }
+
+    function pickQuestion(){
+      if(pool.length===0){ alert('No states selected.'); return; }
+      roundId++; // new round
+      gradedRoundId = null; // reset graded flag
+      resetMapStyles(); // ensure no stale clicks carry over
+      const ab = pool[Math.floor(Math.random()*pool.length)];
+      const s = byAbbr[ab];
+      const modes = Array.from(enabledPrompts);
+      const mode = modes[Math.floor(Math.random()*modes.length)];
+      current = { abbr:s.abbr, state:s.state, capital:s.capital, mode };
+      if(mode==='state'){
+        modeTag.textContent = 'Prompt: State → need Capital' + (requireAbbr?' + Abbrev':'') + (requireMap?' + Map':'');
+        promptEl.textContent = s.state;
+        ansMain.placeholder='Capital';
+      } else {
+        modeTag.textContent = 'Prompt: Capital → need State' + (requireAbbr?' + Abbrev':'') + (requireMap?' + Map':'');
+        promptEl.textContent = s.capital;
+        ansMain.placeholder='State';
+      }
+      msgEl.className='feedback';
+      msgEl.textContent='Type your answer' + (requireAbbr?' (and abbreviation)':'') + (requireMap?' and click the state on the map':'') + '.';
+      ansMain.focus();
+    }
+
+    function checkAnswer(){
+      // Prevent double-scoring: if this round was already graded, just re-show feedback
+      const alreadyGraded = (gradedRoundId === roundId);
+      if(!current){ msgEl.className='feedback bad'; msgEl.textContent='Click “Ask Question” first.'; return; }
+      ansMain.classList.remove('error'); ansAbbr.classList.remove('error');
+
+      const tMain = normalize(ansMain.value);
+      const tAbbr = (ansAbbr.value||'').toUpperCase().trim();
+
+      const prelim = validateInputs({requireAbbr, requireMap}, tMain, tAbbr);
+      if(!prelim.ok){
+        msgEl.className='feedback bad';
+        msgEl.textContent = prelim.msg;
+        if(prelim.reason==='main'){ ansMain.classList.add('error'); ansMain.focus(); }
+        if(prelim.reason==='abbr'){ ansAbbr.classList.add('error'); ansAbbr.focus(); }
+        return; // Do not score yet
+      }
+
+      const needState = normalize(current.state);
+      const needCapital = normalize(current.capital);
+      const needAbbr = String(current.abbr||'').toUpperCase();
+
+      let textOK = (current.mode==='state') ? (tMain === needCapital) : (tMain === needState);
+      if(requireAbbr){ textOK = textOK && (tAbbr === needAbbr); }
+
+      let mapOK = true;
+      if(requireMap){ mapOK = (clickedRoundId === roundId) && (String(clickedAbbr||'').toUpperCase() === needAbbr); }
+
+      if(requireMap){
+        if(clickedRoundId === roundId && clickedAbbr){
+          const sel = stateElByAbbr.get(String(clickedAbbr||'').toUpperCase());
+          if(sel){ d3.select(sel).classed('correct', mapOK).classed('wrong', !mapOK); }
+        }
+        const correctEl = stateElByAbbr.get(needAbbr);
+        if(!mapOK && correctEl){ d3.select(correctEl).classed('active', true); }
+      }
+
+      if(!alreadyGraded){
+        const total = (+totalEl.textContent||0)+1; totalEl.textContent = String(total);
+        if(textOK && mapOK){
+          const score = (+scoreEl.textContent||0)+1; scoreEl.textContent = String(score);
+        }
+        gradedRoundId = roundId; // mark this round as scored
+      }
+      if(textOK && mapOK){
+        msgEl.className='feedback ok';
+        msgEl.innerHTML = `✅ Correct! <b>${current.state}</b> — <b>${current.capital}</b> (${current.abbr}).`;
+      } else {
+        msgEl.className='feedback bad';
+        const miss = [!textOK? 'typed answer(s)': null, !(mapOK)? 'map pick': null].filter(Boolean).join(' + ');
+        const clickedNote = requireMap ? (mapOK ? '' : ' You clicked a different state.') : '';
+        msgEl.innerHTML = `❌ Incorrect${miss? ' ('+miss+')':''}. Correct is <b>${current.state}</b> — <b>${current.capital}</b> (${current.abbr}).${clickedNote}`;
+      }
+    }
+
+    function clearScore(){
+      scoreEl.textContent='0'; totalEl.textContent='0';
+      msgEl.className='feedback'; msgEl.textContent='Score cleared. Click Ask Question to play again!';
+      resetRoundUI();
+    }
+
+    askBtn.addEventListener('click', ()=>{ resetRoundUI(); pickQuestion(); });
+    nextBtn.addEventListener('click', ()=>{
+      // Desired behavior: If the round hasn't been checked yet, act as Check Answer only.
+      // If it HAS been checked already, then move to the next question.
+      if(!current){
+        // No question yet — start one
+        resetRoundUI();
+        pickQuestion();
+        return;
+      }
+      if(gradedRoundId !== roundId){
+        // Not graded yet → behave like Check Answer (do not advance)
+        checkAnswer();
+        return;
+      }
+      // Already graded → go to next question
+      resetRoundUI();
+      pickQuestion();
+    });
+    checkBtn.addEventListener('click', checkAnswer);
+    clearBtn.addEventListener('click', clearScore);
+    backBtn.addEventListener('click', ()=>{ startOverlay.style.display='flex'; });
+
+    function completeQuiz(){
+      const score = (+scoreEl.textContent||0);
+      const total = (+totalEl.textContent||0);
+      const pct = total ? Math.round((score/total)*100) : 0;
+      finalStats.innerHTML = total ? (`<b>Final Score:</b> ${score} / ${total} (${pct}%)`) : 'No questions answered yet.';
+      endOverlay.style.display = 'flex';
+    }
+
+    completeBtn.addEventListener('click', completeQuiz);
+    playAgainBtn.addEventListener('click', ()=>{
+      endOverlay.style.display = 'none';
+      clearScore();
+      pickQuestion();
+    });
+    endSettingsBtn.addEventListener('click', ()=>{
+      endOverlay.style.display = 'none';
+      startOverlay.style.display = 'flex';
+    });
+
+    document.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter' && e.ctrlKey){ resetRoundUI(); pickQuestion(); }
+      else if(e.key==='Enter' && (document.activeElement===ansMain || document.activeElement===ansAbbr)){ checkAnswer(); }
+    });
+
+    // ===== Self-checks (simple console tests) =====
+    (function selfTests(){
+      console.group('%cUS States Quiz — self-tests','color:#5ac8fa');
+      console.assert(byAbbr['CA'].capital === 'Sacramento','CA capital should be Sacramento');
+      console.assert(FIPS_TO_ABBR['06'] === 'CA','FIPS 06 should map to CA');
+      console.assert(normalize('St. Paul') === 'saint paul','normalize should convert "St. Paul" → "saint paul"');
+      console.assert(typeof drawMap === 'function','drawMap should be defined');
+      console.assert(Object.keys(byAbbr).length === 50, 'There should be 50 states in the dataset');
+      console.assert(['state','capital'].includes(['state','capital'][Math.floor(Math.random()*2)]), 'Prompt selection should be one of the two types');
+      console.assert(normalize('  Oklahoma   City ') === 'oklahoma city','normalize should trim and collapse spaces');
+      // Validation tests
+      (function(){
+        // Simulate no click this round
+        const savedRound = roundId; const savedClicked = clickedRoundId; const savedAbbr = clickedAbbr;
+        roundId = 100; clickedRoundId = 99; clickedAbbr = 'CA';
+        console.assert(!validateInputs({requireAbbr:false, requireMap:true}, 'answer', '').ok, 'Missing map click for current round should fail');
+        roundId = savedRound; clickedRoundId = savedClicked; clickedAbbr = savedAbbr;
+      })();
+      console.groupEnd();
+    })();
+
+    // Initialize state list
+    renderStateList();
+  </script>
+</body>
+</html>
